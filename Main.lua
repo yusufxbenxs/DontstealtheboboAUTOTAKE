@@ -1,4 +1,4 @@
--- Services Setup
+-- Service Initialization
 local getService = function(service)
     return (cloneref and cloneref(game:GetService(service))) or game:GetService(service)
 end
@@ -20,7 +20,7 @@ _G.SelectedLabubu = "Any (Random)"
 _G.AutoTakeRunning = false
 _G.KeepLabubus = false
 _G.SafeMode = true
-_G.UsePhysicalInput = true -- TOGGLE: true = Key Press/Touch, false = Proximity Trigger
+_G.UsePhysicalInput = true -- TOGGLE: true = Key/Touch, false = Direct Trigger
 _G.SellCooldown = 50
 _G.TweenSpeed = 350
 
@@ -32,7 +32,7 @@ end
 local labubuQueue = {}
 local baseSlots = {}
 
--- Helper Functions
+-- Character & Movement Helpers
 local function getHRP()
     local char = localPlayer.Character or localPlayer.CharacterAdded:Wait()
     return char:FindFirstChild("HumanoidRootPart")
@@ -94,7 +94,7 @@ local function executeInteraction(prompt, fallbackKeyCode)
     task.wait(0.1)
 end
 
--- Target Engine
+-- Target Queue Engine
 local function initializeQueue()
     table.clear(labubuQueue)
     table.clear(baseSlots)
@@ -145,7 +145,7 @@ local function interruptibleWait(seconds)
     return _G.AutoTakeRunning
 end
 
--- Loop Control
+-- Execution Loop
 local function startAutoTake()
     if _G.AutoTakeRunning then return end
     _G.AutoTakeRunning = true
@@ -215,7 +215,7 @@ local function stopAutoTake()
     end
 end
 
--- UI Parent Setup
+-- UI Setup
 local guiParent = (gethui and gethui()) or CoreGui or localPlayer:WaitForChild("PlayerGui")
 if guiParent:FindFirstChild("AutoTakeHubGUI") then
     guiParent.AutoTakeHubGUI:Destroy()
@@ -227,6 +227,7 @@ screenGui.ResetOnSpawn = false
 screenGui.Parent = guiParent
 
 local activeFrame = nil
+local miniZBtn = nil
 
 local function enableDragging(frame)
     local dragging, dragInput, dragStart, startPos
@@ -253,13 +254,75 @@ local function enableDragging(frame)
     end)
 end
 
--- Reload Function
-local function reloadScript()
-    stopAutoTake()
-    screenGui:Destroy()
-    task.wait(0.1)
-    -- Re-executes current environment logic
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/YourRepo/script.lua"))() -- Optional fallback or local execution reset
+-- Floating Draggable Mini Z Button
+local function createMiniZButton()
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 38, 0, 38)
+    btn.Position = UDim2.new(0.02, 0, 0.4, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    btn.BackgroundTransparency = 0.2
+    btn.Text = "Z"
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 18
+    btn.Font = Enum.Font.SourceSansBold
+    btn.Visible = false
+    btn.Active = true
+    btn.Parent = screenGui
+
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(80, 80, 110)
+    stroke.Thickness = 1.5
+    stroke.Parent = btn
+
+    -- Dragging Logic with Click Threshold
+    local dragging = false
+    local dragStart, startPos
+    local totalMoveDistance = 0
+
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = btn.Position
+            totalMoveDistance = 0
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            totalMoveDistance = delta.Magnitude
+            btn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    btn.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if dragging then
+                dragging = false
+                -- Trigger toggle only if dragged less than 6 pixels
+                if totalMoveDistance < 6 then
+                    if activeFrame then
+                        activeFrame.Visible = true
+                        btn.Visible = false
+                    end
+                end
+            end
+        end
+    end)
+
+    return btn
+end
+
+miniZBtn = createMiniZButton()
+
+local function toggleUI()
+    if activeFrame then
+        activeFrame.Visible = not activeFrame.Visible
+        miniZBtn.Visible = not activeFrame.Visible
+    end
 end
 
 local function createBaseWindow(title, size, pos)
@@ -280,7 +343,7 @@ local function createBaseWindow(title, size, pos)
     stroke.Parent = win
 
     local titleLbl = Instance.new("TextLabel")
-    titleLbl.Size = UDim2.new(1, -60, 0, 30)
+    titleLbl.Size = UDim2.new(1, -85, 0, 30)
     titleLbl.Position = UDim2.new(0, 10, 0, 2)
     titleLbl.BackgroundTransparency = 1
     titleLbl.Text = title
@@ -289,6 +352,22 @@ local function createBaseWindow(title, size, pos)
     titleLbl.Font = Enum.Font.SourceSansBold
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
     titleLbl.Parent = win
+
+    -- Minimize / Hide Button (_)
+    local minBtn = Instance.new("TextButton")
+    minBtn.Size = UDim2.new(0, 22, 0, 22)
+    minBtn.Position = UDim2.new(1, -78, 0, 5)
+    minBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 95)
+    minBtn.Text = "_"
+    minBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    minBtn.TextSize = 12
+    minBtn.Font = Enum.Font.SourceSansBold
+    minBtn.Parent = win
+    Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 4)
+
+    minBtn.MouseButton1Click:Connect(function()
+        toggleUI()
+    end)
 
     -- Reload Button (↻)
     local reloadBtn = Instance.new("TextButton")
@@ -356,13 +435,13 @@ hubCloseBtn.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
 
--- 2. Restored Settings Window (All Features Restored)
+-- 2. Settings Window
 local settingsFrame, settingsCloseBtn = createBaseWindow("Script Settings", UDim2.new(0, 230, 0, 360), hubFrame.Position)
 settingsFrame.Visible = false
 
 local yOffset = 38
 
--- Player Target Box
+-- Target Player Box
 local playerBox = Instance.new("TextBox")
 playerBox.Size = UDim2.new(1, -20, 0, 26)
 playerBox.Position = UDim2.new(0, 10, 0, yOffset)
@@ -382,7 +461,7 @@ end)
 
 yOffset = yOffset + 32
 
--- Input Mode Toggle
+-- Input Mode
 local inputModeBtn = Instance.new("TextButton")
 inputModeBtn.Size = UDim2.new(1, -20, 0, 26)
 inputModeBtn.Position = UDim2.new(0, 10, 0, yOffset)
@@ -401,14 +480,14 @@ inputModeBtn.MouseButton1Click:Connect(function()
         inputModeBtn.Text = "Input: Physical (Key/Touch)"
         inputModeBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
     else
-        inputModeBtn.Text = "Input: Virtual Proximity"
+        inputModeBtn.Text = "Input: Virtual Interaction"
         inputModeBtn.BackgroundColor3 = Color3.fromRGB(180, 100, 50)
     end
 end)
 
 yOffset = yOffset + 32
 
--- Plot Selector
+-- Plot Selection
 local plotBtn = Instance.new("TextButton")
 plotBtn.Size = UDim2.new(1, -20, 0, 26)
 plotBtn.Position = UDim2.new(0, 10, 0, yOffset)
@@ -431,7 +510,7 @@ end)
 
 yOffset = yOffset + 32
 
--- Labubu Target Dropdown
+-- Target Labubu Selection
 local labubuBtn = Instance.new("TextButton")
 labubuBtn.Size = UDim2.new(1, -20, 0, 26)
 labubuBtn.Position = UDim2.new(0, 10, 0, yOffset)
@@ -454,7 +533,7 @@ end)
 
 yOffset = yOffset + 32
 
--- Safe Mode Toggle
+-- Safe Mode
 local safeBtn = Instance.new("TextButton")
 safeBtn.Size = UDim2.new(1, -20, 0, 26)
 safeBtn.Position = UDim2.new(0, 10, 0, yOffset)
@@ -517,7 +596,7 @@ end)
 
 yOffset = yOffset + 32
 
--- Sell Cooldown Box
+-- Sell Delay Box
 local sellBox = Instance.new("TextBox")
 sellBox.Size = UDim2.new(1, -20, 0, 26)
 sellBox.Position = UDim2.new(0, 10, 0, yOffset)
@@ -536,7 +615,7 @@ sellBox.FocusLost:Connect(function()
     sellBox.Text = "Sell Delay (s): " .. tostring(_G.SellCooldown)
 end)
 
--- 3. Execution Controls Window
+-- 3. Controls Window
 local controlsFrame, controlsCloseBtn = createBaseWindow("Execution Controls", UDim2.new(0, 200, 0, 130), hubFrame.Position)
 controlsFrame.Visible = false
 
@@ -564,7 +643,7 @@ stopBtn.Font = Enum.Font.SourceSansBold
 stopBtn.Parent = controlsFrame
 Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0, 6)
 
--- Seamless Transitions
+-- Window Switching
 btnSettingsWindow.MouseButton1Click:Connect(function()
     settingsFrame.Position = hubFrame.Position
     hubFrame.Visible = false
@@ -593,12 +672,10 @@ controlsCloseBtn.MouseButton1Click:Connect(function()
     activeFrame = hubFrame
 end)
 
--- Minimize Window Keybind (Z Key)
+-- Z Key Toggle
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed and input.KeyCode == Enum.KeyCode.Z then
-        if activeFrame then
-            activeFrame.Visible = not activeFrame.Visible
-        end
+        toggleUI()
     end
 end)
 
