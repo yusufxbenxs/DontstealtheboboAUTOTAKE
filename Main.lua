@@ -46,7 +46,7 @@ local function getTargetPlayer()
     return localPlayer
 end
 
--- Teleport / Movement Handler
+-- Teleport / Movement Handler (Non-Blocking Timeout Included)
 local function safeTeleport(targetCFrame)
     local targetPlr = getTargetPlayer()
     if not targetPlr or not targetPlr.Character then return end
@@ -58,7 +58,7 @@ local function safeTeleport(targetCFrame)
         local distance = (hrp.Position - targetCFrame.Position).Magnitude
         if distance < 1 then return end
 
-        local travelTime = math.clamp(distance / _G.TweenSpeed, 0.05, 1.2)
+        local travelTime = math.clamp(distance / _G.TweenSpeed, 0.05, 1.0)
         local tweenInfo = TweenInfo.new(
             travelTime,
             Enum.EasingStyle.Linear,
@@ -67,13 +67,18 @@ local function safeTeleport(targetCFrame)
 
         local tween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
         tween:Play()
-        tween.Completed:Wait()
+        
+        -- Timeout protection so it never freezes
+        local start = tick()
+        while tween.PlaybackState == Enum.PlaybackState.Playing and (tick() - start) < (travelTime + 0.2) do
+            task.wait()
+        end
     else
         hrp.CFrame = targetCFrame
     end
 end
 
--- Cross-Platform Proximity Prompt Executor (PC & Mobile Compatible)
+-- Cross-Platform Proximity Prompt Executor (Non-Blocking Engine)
 local function executePromptFully(prompt, fallbackKeyCode)
     if not prompt or not prompt:IsA("ProximityPrompt") then return end
     
@@ -87,28 +92,30 @@ local function executePromptFully(prompt, fallbackKeyCode)
             targetCF = parentObj.CFrame
         elseif parentObj:IsA("Attachment") then
             targetCF = parentObj.WorldCFrame
+        elseif parentObj:IsA("Model") then
+            targetCF = parentObj:GetPivot()
         end
 
         if targetCF then
             safeTeleport(targetCF)
         end
     end
-    task.wait(0.15)
+    task.wait(0.1)
 
     local duration = (prompt.HoldDuration > 0 and prompt.HoldDuration) or 0.1
 
-    -- Mobile & Executor-Safe Prompt Fire Strategy
-    if fireproximityprompt then
-        fireproximityprompt(prompt)
-        task.wait(duration + 0.1)
-    else
-        -- Native engine method (Works universally on Mobile and PC)
-        prompt:InputHoldBegin()
-        task.wait(duration + 0.1)
-        prompt:InputHoldEnd()
-    end
+    -- Trigger Proximity Prompt
+    task.spawn(function()
+        if fireproximityprompt then
+            fireproximityprompt(prompt)
+        else
+            prompt:InputHoldBegin()
+            task.wait(duration)
+            prompt:InputHoldEnd()
+        end
+    end)
 
-    -- PC Backup Key Press (Only executed on Desktop)
+    -- PC Backup Key Press
     if not isMobile and fallbackKeyCode then
         pcall(function()
             VirtualInputManager:SendKeyEvent(true, fallbackKeyCode, false, game)
@@ -116,6 +123,8 @@ local function executePromptFully(prompt, fallbackKeyCode)
             VirtualInputManager:SendKeyEvent(false, fallbackKeyCode, false, game)
         end)
     end
+
+    task.wait(duration + 0.15)
 end
 
 -- Get Selected Target Plot Folder
@@ -125,7 +134,7 @@ local function getTargetPlotFolder()
     return plotsFolder:FindFirstChild(_G.SelectedPlot) or plotsFolder:FindFirstChild("Plot1")
 end
 
--- Initialize Queue & Target Base Slots (Supports 1-20 exact hierarchy)
+-- Initialize Queue & Target Base Slots
 local function initializeQueue()
     table.clear(labubuQueue)
     table.clear(baseSlots)
@@ -149,9 +158,13 @@ local function initializeQueue()
                 local promptAttachment = slotFolder:FindFirstChild("PromptAttachment")
                 
                 local placePrompt = promptAttachment and promptAttachment:FindFirstChild("SlotPlace")
-                local sellPrompt = slotFolder:FindFirstChild("PromptSell") or (promptAttachment and promptAttachment:FindFirstChild("SlotSell"))
+                local sellPrompt = promptAttachment and promptAttachment:FindFirstChild("SlotSell")
 
-                local targetPart = promptAttachment or slotFolder:FindFirstChild("Pedestal")
+                -- Fallback lookup if nested directly in Slot
+                if not placePrompt then placePrompt = slotFolder:FindFirstChild("SlotPlace") end
+                if not sellPrompt then sellPrompt = slotFolder:FindFirstChild("SlotSell") end
+
+                local targetPart = promptAttachment or slotFolder:FindFirstChild("Pedestal") or slotFolder:FindFirstChild("Part")
 
                 if targetPart then
                     table.insert(foundSlots, {
@@ -192,7 +205,7 @@ local function startAutoTake()
             initializeQueue()
 
             if #labubuQueue == 0 or #baseSlots == 0 then
-                warn("[Auto-Take] Waiting for NPCs or slots matching target...")
+                warn("[Auto-Take] Waiting for NPCs or base slots...")
                 if not interruptibleWait(2) then break end
                 continue
             end
@@ -204,17 +217,19 @@ local function startAutoTake()
                 local pickupPrompt = currentNpc:FindFirstChild("Prompts") and currentNpc.Prompts:FindFirstChild("Pickup")
 
                 if currentNpc and pickupPrompt then
+                    -- 1. Move to NPC & Pickup
                     safeTeleport(currentNpc:GetPivot())
-                    if not interruptibleWait(0.1) then break end
+                    if not interruptibleWait(0.05) then break end
 
                     executePromptFully(pickupPrompt, Enum.KeyCode.E)
-                    if not interruptibleWait(0.2) then break end
+                    if not interruptibleWait(0.1) then break end
 
+                    -- 2. Move to Target Base Slot & Place
                     local slotData = baseSlots[slotIndex]
                     if slotData and slotData.targetPart then
-                        local targetCF = slotData.targetPart:IsA("Attachment") and slotData.targetPart.WorldCFrame or slotData.targetPart.CFrame
-                        safeTeleport(targetCF)
-                        if not interruptibleWait(0.2) then break end
+                        local targetCF = slotData.targetPart:IsA("Attachment") and slotData.targetPart.WorldCFrame or slotData.targetPart:GetPivot()
+                        safeTeleport(targetCF + Vector3.new(0, 1.5, 0))
+                        if not interruptibleWait(0.1) then break end
 
                         if slotData.placePrompt then
                             executePromptFully(slotData.placePrompt, Enum.KeyCode.E)
@@ -222,7 +237,7 @@ local function startAutoTake()
                     end
 
                     slotIndex = slotIndex + 1
-                    if not interruptibleWait(0.3) then break end
+                    if not interruptibleWait(0.2) then break end
                 end
             end
 
@@ -240,7 +255,7 @@ local function startAutoTake()
                                 executePromptFully(slot.sellPrompt, Enum.KeyCode.Q)
                             end
                         end
-                        interruptibleWait(2)
+                        interruptibleWait(1.5)
                     end
                 end
             end
