@@ -7,6 +7,7 @@ local Players = getService("Players")
 local Workspace = getService("Workspace")
 local UserInputService = getService("UserInputService")
 local VirtualInputManager = getService("VirtualInputManager")
+local TweenService = getService("TweenService")
 local CoreGui = getService("CoreGui")
 
 local localPlayer = Players.LocalPlayer
@@ -16,7 +17,9 @@ _G.SelectedPlayer = "Auto"
 _G.SelectedPlot = "Plot1"
 _G.AutoTakeRunning = false
 _G.KeepLabubus = false
+_G.SafeMode = true
 _G.SellCooldown = 50
+_G.TweenSpeed = 350 -- Studs per second
 
 if _G.AutoTakeThread then
     task.cancel(_G.AutoTakeThread)
@@ -41,11 +44,30 @@ local function getTargetPlayer()
     return localPlayer
 end
 
--- Teleport Target Player safely
-local function safeTeleport(cframe)
+-- Teleport / Movement Handler (Tween vs Instant)
+local function safeTeleport(targetCFrame)
     local targetPlr = getTargetPlayer()
-    if targetPlr and targetPlr.Character and targetPlr.Character:FindFirstChild("HumanoidRootPart") then
-        targetPlr.Character.HumanoidRootPart.CFrame = cframe
+    if not targetPlr or not targetPlr.Character then return end
+    
+    local hrp = targetPlr.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    if _G.SafeMode then
+        local distance = (hrp.Position - targetCFrame.Position).Magnitude
+        if distance < 1 then return end
+
+        local travelTime = math.clamp(distance / _G.TweenSpeed, 0.05, 1.2)
+        local tweenInfo = TweenInfo.new(
+            travelTime,
+            Enum.EasingStyle.Linear,
+            Enum.EasingDirection.Out
+        )
+
+        local tween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
+        tween:Play()
+        tween.Completed:Wait()
+    else
+        hrp.CFrame = targetCFrame
     end
 end
 
@@ -62,16 +84,16 @@ local function executePromptFully(prompt)
             safeTeleport(cf)
         end
     end
-    task.wait(0.15)
+    task.wait(0.1)
 
     local duration = (prompt.HoldDuration > 0 and prompt.HoldDuration) or 0.1
 
     if fireproximityprompt then
         fireproximityprompt(prompt)
-        task.wait(duration + 0.15)
+        task.wait(duration + 0.1)
     else
         prompt:InputHoldBegin()
-        task.wait(duration + 0.15)
+        task.wait(duration + 0.1)
         prompt:InputHoldEnd()
     end
 end
@@ -160,15 +182,15 @@ local function startAutoTake()
 
                 if currentNpc and pickupPrompt then
                     safeTeleport(currentNpc:GetPivot())
-                    if not interruptibleWait(0.2) then break end
+                    if not interruptibleWait(0.1) then break end
 
                     executePromptFully(pickupPrompt)
-                    if not interruptibleWait(0.3) then break end
+                    if not interruptibleWait(0.2) then break end
 
                     local slotData = baseSlots[slotIndex]
                     if slotData and slotData.part then
                         safeTeleport(slotData.part.CFrame + Vector3.new(0, 2, 0))
-                        if not interruptibleWait(0.3) then break end
+                        if not interruptibleWait(0.2) then break end
 
                         if slotData.placePrompt then
                             executePromptFully(slotData.placePrompt)
@@ -176,7 +198,7 @@ local function startAutoTake()
                     end
 
                     slotIndex = slotIndex + 1
-                    if not interruptibleWait(0.4) then break end
+                    if not interruptibleWait(0.3) then break end
                 end
             end
 
@@ -239,9 +261,9 @@ local miniCorner = Instance.new("UICorner")
 miniCorner.CornerRadius = UDim.new(0, 10)
 miniCorner.Parent = miniBtn
 
--- Main Draggable Window Frame
+-- Main Window Frame
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 230, 0, 295)
+mainFrame.Size = UDim2.new(0, 230, 0, 335)
 mainFrame.Position = UDim2.new(0.02, 0, 0.1, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 mainFrame.BackgroundTransparency = 0.2
@@ -253,7 +275,7 @@ local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 8)
 mainCorner.Parent = mainFrame
 
--- Header Title
+-- Title
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, -86, 0, 30)
 titleLabel.Position = UDim2.new(0, 10, 0, 5)
@@ -309,7 +331,7 @@ local closeCorner = Instance.new("UICorner")
 closeCorner.CornerRadius = UDim.new(0, 4)
 closeCorner.Parent = closeButton
 
--- 1. Target Player Dropdown
+-- Target Player Dropdown
 local plrDropBtn = Instance.new("TextButton")
 plrDropBtn.Size = UDim2.new(1, -20, 0, 26)
 plrDropBtn.Position = UDim2.new(0, 10, 0, 36)
@@ -374,7 +396,7 @@ plrDropBtn.MouseButton1Click:Connect(function()
     plrDropFrame.Visible = not plrDropFrame.Visible
 end)
 
--- 2. Target Plot Dropdown
+-- Target Plot Dropdown
 local plotDropBtn = Instance.new("TextButton")
 plotDropBtn.Size = UDim2.new(1, -20, 0, 26)
 plotDropBtn.Position = UDim2.new(0, 10, 0, 68)
@@ -485,10 +507,47 @@ toggleBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+-- Safe Mode Toggle Button
+local safeBtn = Instance.new("TextButton")
+safeBtn.Size = UDim2.new(1, -20, 0, 26)
+safeBtn.Position = UDim2.new(0, 10, 0, 170)
+safeBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+safeBtn.Text = "Safe Mode: ON"
+safeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+safeBtn.TextSize = 13
+safeBtn.Font = Enum.Font.SourceSansBold
+safeBtn.Parent = mainFrame
+
+local safeCorner = Instance.new("UICorner")
+safeCorner.CornerRadius = UDim.new(0, 6)
+safeCorner.Parent = safeBtn
+
+-- Safe Mode Sub-text Description
+local safeDesc = Instance.new("TextLabel")
+safeDesc.Size = UDim2.new(1, -20, 0, 12)
+safeDesc.Position = UDim2.new(0, 10, 0, 198)
+safeDesc.BackgroundTransparency = 1
+safeDesc.Text = "Fast Tweening (On) vs Instant TP (Off)"
+safeDesc.TextColor3 = Color3.fromRGB(160, 160, 160)
+safeDesc.TextSize = 10
+safeDesc.Font = Enum.Font.SourceSansItalic
+safeDesc.Parent = mainFrame
+
+safeBtn.MouseButton1Click:Connect(function()
+    _G.SafeMode = not _G.SafeMode
+    if _G.SafeMode then
+        safeBtn.Text = "Safe Mode: ON"
+        safeBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+    else
+        safeBtn.Text = "Safe Mode: OFF"
+        safeBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+    end
+end)
+
 -- Run Button
 local runButton = Instance.new("TextButton")
 runButton.Size = UDim2.new(1, -20, 0, 32)
-runButton.Position = UDim2.new(0, 10, 0, 172)
+runButton.Position = UDim2.new(0, 10, 0, 218)
 runButton.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
 runButton.Text = "Run Auto-Take"
 runButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -503,7 +562,7 @@ btnCorner1.Parent = runButton
 -- Break Button
 local breakButton = Instance.new("TextButton")
 breakButton.Size = UDim2.new(1, -20, 0, 32)
-breakButton.Position = UDim2.new(0, 10, 0, 212)
+breakButton.Position = UDim2.new(0, 10, 0, 258)
 breakButton.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
 breakButton.Text = "Break Loop"
 breakButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -515,7 +574,7 @@ local btnCorner2 = Instance.new("UICorner")
 btnCorner2.CornerRadius = UDim.new(0, 6)
 btnCorner2.Parent = breakButton
 
--- Full Script Termination (Killer Function)
+-- Full Script Termination
 local function killEverything()
     stopAutoTake()
 
@@ -544,7 +603,7 @@ local function reloadScript()
     print("[Auto-Take] Old instance terminated successfully.")
 end
 
--- Draggable UI Setup (Prevents opening while dragging on Mobile)
+-- Draggable UI Setup
 local function enableDragging(frame, clickCallback)
     local dragging, dragInput, dragStart, startPos
     local totalDragDistance = 0
