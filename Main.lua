@@ -21,6 +21,7 @@ _G.KeepLabubus = false
 _G.SafeMode = true
 _G.SellCooldown = 50
 _G.TweenSpeed = 350 -- Studs per second
+_G.InteractionMethod = "Auto" -- Modes: "Auto", "Hold E/Q", "Touch"
 
 if _G.AutoTakeThread then
     task.cancel(_G.AutoTakeThread)
@@ -88,14 +89,34 @@ local function executePromptFully(prompt)
     task.wait(0.1)
 
     local duration = (prompt.HoldDuration > 0 and prompt.HoldDuration) or 0.1
+    local mode = _G.InteractionMethod
 
-    if fireproximityprompt then
-        fireproximityprompt(prompt)
-        task.wait(duration + 0.1)
-    else
+    if mode == "Hold E/Q" then
+        local key = (prompt.KeyboardKeyCode ~= Enum.KeyCode.Unknown) and prompt.KeyboardKeyCode or Enum.KeyCode.E
+        VirtualInputManager:SendKeyEvent(true, key, false, game)
         prompt:InputHoldBegin()
         task.wait(duration + 0.1)
         prompt:InputHoldEnd()
+        VirtualInputManager:SendKeyEvent(false, key, false, game)
+    elseif mode == "Touch" then
+        local viewportSize = Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize or Vector2.new(800, 600)
+        local centerPos = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
+        
+        VirtualInputManager:SendTouchPadEvent(centerPos.X, centerPos.Y, 0, Enum.UserInputState.Begin)
+        prompt:InputHoldBegin()
+        task.wait(duration + 0.1)
+        prompt:InputHoldEnd()
+        VirtualInputManager:SendTouchPadEvent(centerPos.X, centerPos.Y, 0, Enum.UserInputState.End)
+    else
+        -- Auto / Direct Fire Method
+        if fireproximityprompt then
+            fireproximityprompt(prompt)
+            task.wait(duration + 0.1)
+        else
+            prompt:InputHoldBegin()
+            task.wait(duration + 0.1)
+            prompt:InputHoldEnd()
+        end
     end
 end
 
@@ -266,7 +287,7 @@ miniCorner.Parent = miniBtn
 
 -- Main Window Frame
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 230, 0, 365)
+mainFrame.Size = UDim2.new(0, 230, 0, 400)
 mainFrame.Position = UDim2.new(0.02, 0, 0.1, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 mainFrame.BackgroundTransparency = 0.2
@@ -552,10 +573,44 @@ cdBox.FocusLost:Connect(function()
     end
 end)
 
+-- Interaction Method Toggle Button
+local interactBtn = Instance.new("TextButton")
+interactBtn.Size = UDim2.new(1, -20, 0, 26)
+interactBtn.Position = UDim2.new(0, 10, 0, 168)
+interactBtn.BackgroundColor3 = Color3.fromRGB(50, 90, 140)
+interactBtn.Text = "Interaction: Auto / Fire"
+interactBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+interactBtn.TextSize = 12
+interactBtn.Font = Enum.Font.SourceSansBold
+interactBtn.Parent = mainFrame
+
+local interactCorner = Instance.new("UICorner")
+interactCorner.CornerRadius = UDim.new(0, 6)
+interactCorner.Parent = interactBtn
+
+local modes = {"Auto", "Hold E/Q", "Touch"}
+local modeIndex = 1
+
+interactBtn.MouseButton1Click:Connect(function()
+    modeIndex = (modeIndex % #modes) + 1
+    _G.InteractionMethod = modes[modeIndex]
+    
+    if _G.InteractionMethod == "Auto" then
+        interactBtn.Text = "Interaction: Auto / Fire"
+        interactBtn.BackgroundColor3 = Color3.fromRGB(50, 90, 140)
+    elseif _G.InteractionMethod == "Hold E/Q" then
+        interactBtn.Text = "Interaction: Hold E / Q"
+        interactBtn.BackgroundColor3 = Color3.fromRGB(140, 90, 40)
+    elseif _G.InteractionMethod == "Touch" then
+        interactBtn.Text = "Interaction: Touch (Mobile)"
+        interactBtn.BackgroundColor3 = Color3.fromRGB(40, 140, 120)
+    end
+end)
+
 -- Keep Labubus Toggle Button
 local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(1, -20, 0, 28)
-toggleBtn.Position = UDim2.new(0, 10, 0, 168)
+toggleBtn.Size = UDim2.new(1, -20, 0, 26)
+toggleBtn.Position = UDim2.new(0, 10, 0, 200)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 toggleBtn.Text = "Keep Labubus: OFF"
 toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -581,7 +636,7 @@ end)
 -- Safe Mode Toggle Button
 local safeBtn = Instance.new("TextButton")
 safeBtn.Size = UDim2.new(1, -20, 0, 26)
-safeBtn.Position = UDim2.new(0, 10, 0, 202)
+safeBtn.Position = UDim2.new(0, 10, 0, 232)
 safeBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
 safeBtn.Text = "Safe Mode: ON"
 safeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -596,7 +651,7 @@ safeCorner.Parent = safeBtn
 -- Safe Mode Sub-text Description
 local safeDesc = Instance.new("TextLabel")
 safeDesc.Size = UDim2.new(1, -20, 0, 12)
-safeDesc.Position = UDim2.new(0, 10, 0, 230)
+safeDesc.Position = UDim2.new(0, 10, 0, 260)
 safeDesc.BackgroundTransparency = 1
 safeDesc.Text = "Fast Tweening (On) vs Instant TP (Off)"
 safeDesc.TextColor3 = Color3.fromRGB(160, 160, 160)
@@ -618,7 +673,7 @@ end)
 -- Run Button
 local runButton = Instance.new("TextButton")
 runButton.Size = UDim2.new(1, -20, 0, 32)
-runButton.Position = UDim2.new(0, 10, 0, 250)
+runButton.Position = UDim2.new(0, 10, 0, 280)
 runButton.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
 runButton.Text = "Run Auto-Take"
 runButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -633,7 +688,7 @@ btnCorner1.Parent = runButton
 -- Break Button
 local breakButton = Instance.new("TextButton")
 breakButton.Size = UDim2.new(1, -20, 0, 32)
-breakButton.Position = UDim2.new(0, 10, 0, 290)
+breakButton.Position = UDim2.new(0, 10, 0, 320)
 breakButton.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
 breakButton.Text = "Break Loop"
 breakButton.TextColor3 = Color3.fromRGB(255, 255, 255)
