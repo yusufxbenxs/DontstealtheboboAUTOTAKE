@@ -12,7 +12,7 @@ local CoreGui = getService("CoreGui")
 
 local localPlayer = Players.LocalPlayer
 
--- Genel Durumlar (Global States)
+-- Global Durumlar
 _G.SelectedPlayer = "Otomatik"
 _G.SelectedPlot = "Plot1"
 _G.SelectedLabubu = "Herhangi Biri (Rastgele)"
@@ -20,7 +20,8 @@ _G.AutoTakeRunning = false
 _G.KeepLabubus = false
 _G.SafeMode = true
 _G.SellCooldown = 50
-_G.TweenSpeed = 350 -- Saniyedeki Stud hızı
+_G.TweenSpeed = 350 -- Saniyede kat edilen mesafe (Studs)
+_G.InteractionMethod = "Otomatik" -- Modlar: "Otomatik", "E/Q Basılı Tut", "Dokunmatik"
 
 if _G.AutoTakeThread then
     task.cancel(_G.AutoTakeThread)
@@ -30,7 +31,7 @@ end
 local labubuQueue = {}
 local baseSlots = {}
 
--- Seçime göre geçerli Oyuncu Nesnesini belirle
+-- Seçime göre hedef Oyuncu Nesnesini bulma
 local function getTargetPlayer()
     if _G.SelectedPlayer == "Otomatik" then
         return localPlayer
@@ -45,7 +46,7 @@ local function getTargetPlayer()
     return localPlayer
 end
 
--- Işınlanma / Hareket Yöneticisi (Tween vs Anlık)
+-- Işınlanma / Hareket Yöneticisi (Tween vs Anında)
 local function safeTeleport(targetCFrame)
     local targetPlr = getTargetPlayer()
     if not targetPlr or not targetPlr.Character then return end
@@ -72,7 +73,7 @@ local function safeTeleport(targetCFrame)
     end
 end
 
--- Etkileşim Butonu (Proximity Prompt) Çalıştırıcı
+-- Etkileşim Butonu Çalıştırıcısı
 local function executePromptFully(prompt)
     if not prompt or not prompt:IsA("ProximityPrompt") then return end
     
@@ -88,25 +89,45 @@ local function executePromptFully(prompt)
     task.wait(0.1)
 
     local duration = (prompt.HoldDuration > 0 and prompt.HoldDuration) or 0.1
+    local mode = _G.InteractionMethod
 
-    if fireproximityprompt then
-        fireproximityprompt(prompt)
-        task.wait(duration + 0.1)
-    else
+    if mode == "E/Q Basılı Tut" then
+        local key = (prompt.KeyboardKeyCode ~= Enum.KeyCode.Unknown) and prompt.KeyboardKeyCode or Enum.KeyCode.E
+        VirtualInputManager:SendKeyEvent(true, key, false, game)
         prompt:InputHoldBegin()
         task.wait(duration + 0.1)
         prompt:InputHoldEnd()
+        VirtualInputManager:SendKeyEvent(false, key, false, game)
+    elseif mode == "Dokunmatik" then
+        local viewportSize = Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize or Vector2.new(800, 600)
+        local centerPos = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
+        
+        VirtualInputManager:SendTouchPadEvent(centerPos.X, centerPos.Y, 0, Enum.UserInputState.Begin)
+        prompt:InputHoldBegin()
+        task.wait(duration + 0.1)
+        prompt:InputHoldEnd()
+        VirtualInputManager:SendTouchPadEvent(centerPos.X, centerPos.Y, 0, Enum.UserInputState.End)
+    else
+        -- Otomatik / Doğrudan Tetikleme Yöntemi
+        if fireproximityprompt then
+            fireproximityprompt(prompt)
+            task.wait(duration + 0.1)
+        else
+            prompt:InputHoldBegin()
+            task.wait(duration + 0.1)
+            prompt:InputHoldEnd()
+        end
     end
 end
 
--- Seçilen Hedef Arsa (Plot) Klasörünü Al
+-- Seçili Hedef Plot Klasörünü Al
 local function getTargetPlotFolder()
     local plotsFolder = Workspace:WaitForChild("Map", 5):WaitForChild("Plots", 5)
     if not plotsFolder then return nil end
     return plotsFolder:FindFirstChild(_G.SelectedPlot) or plotsFolder:FindFirstChild("Plot1")
 end
 
--- Kuyruğu ve Hedef Üs Slotlarını Başlat
+-- Kuyruğu ve Hedef Alan Yuvalarını Başlat
 local function initializeQueue()
     table.clear(labubuQueue)
     table.clear(baseSlots)
@@ -172,7 +193,7 @@ local function startAutoTake()
             initializeQueue()
 
             if #labubuQueue == 0 or #baseSlots == 0 then
-                warn("[Otomatik Alım] Hedefe uygun NPC'ler veya slotlar bekleniyor...")
+                warn("[Otomatik Toplama] Hedefle eşleşen NPC veya yuvalar bekleniyor...")
                 if not interruptibleWait(2) then break end
                 continue
             end
@@ -207,13 +228,13 @@ local function startAutoTake()
 
             if _G.AutoTakeRunning then
                 if _G.KeepLabubus then
-                    print("[Otomatik Alım] Üs dolu! 'Labubuları Tut' etkin. Döngü durduruluyor.")
+                    print("[Otomatik Toplama] Alan dolu! 'Labubu'ları Tut' etkin. Döngü durduruluyor.")
                     _G.AutoTakeRunning = false
                     break
                 else
-                    print("[Otomatik Alım] Üs dolu! Satmak için " .. tostring(_G.SellCooldown) .. "sn bekleniyor...")
+                    print("[Otomatik Toplama] Alan dolu! Satış yapmak için " .. tostring(_G.SellCooldown) .. " saniye bekleniyor...")
                     if interruptibleWait(_G.SellCooldown) then
-                        print("[Otomatik Alım] SlotSell etkileşimleri tetikleniyor...")
+                        print("[Otomatik Toplama] Satış butonları tetikleniyor...")
                         for _, slot in ipairs(baseSlots) do
                             if slot.sellPrompt then
                                 executePromptFully(slot.sellPrompt)
@@ -232,7 +253,7 @@ local function stopAutoTake()
     if _G.AutoTakeThread then
         task.cancel(_G.AutoTakeThread)
         _G.AutoTakeThread = nil
-        print("[Otomatik Alım] Döngü durduruldu.")
+        print("[Otomatik Toplama] Döngü durduruldu.")
     end
 end
 
@@ -247,7 +268,7 @@ screenGui.Name = "AutoTakeGUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = guiParent
 
--- Hareketli Simge Durumuna Getirme Butonu ("Z")
+-- Yüzen Küçültme Butonu ("Z")
 local miniBtn = Instance.new("TextButton")
 miniBtn.Size = UDim2.new(0, 45, 0, 45)
 miniBtn.Position = UDim2.new(0.05, 0, 0.2, 0)
@@ -266,7 +287,7 @@ miniCorner.Parent = miniBtn
 
 -- Ana Pencere Çerçevesi
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 230, 0, 365)
+mainFrame.Size = UDim2.new(0, 230, 0, 400)
 mainFrame.Position = UDim2.new(0.02, 0, 0.1, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 mainFrame.BackgroundTransparency = 0.2
@@ -283,7 +304,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, -86, 0, 30)
 titleLabel.Position = UDim2.new(0, 10, 0, 5)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Labubu Oto-Alım"
+titleLabel.Text = "Labubu Oto-Toplama"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextScaled = true
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -304,7 +325,7 @@ local reloadCorner = Instance.new("UICorner")
 reloadCorner.CornerRadius = UDim.new(0, 4)
 reloadCorner.Parent = reloadButton
 
--- Simge Durumuna Küçültme Butonu (-)
+-- Küçültme Butonu (-)
 local minimizeButton = Instance.new("TextButton")
 minimizeButton.Size = UDim2.new(0, 22, 0, 22)
 minimizeButton.Position = UDim2.new(1, -52, 0, 5)
@@ -399,12 +420,12 @@ plrDropBtn.MouseButton1Click:Connect(function()
     plrDropFrame.Visible = not plrDropFrame.Visible
 end)
 
--- Hedef Arsa (Plot) Açılır Menüsü
+-- Hedef Plot Açılır Menüsü
 local plotDropBtn = Instance.new("TextButton")
 plotDropBtn.Size = UDim2.new(1, -20, 0, 26)
 plotDropBtn.Position = UDim2.new(0, 10, 0, 68)
 plotDropBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-plotDropBtn.Text = "Arsa: Plot1 ▼"
+plotDropBtn.Text = "Plot: Plot1 ▼"
 plotDropBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 plotDropBtn.TextSize = 13
 plotDropBtn.Font = Enum.Font.SourceSans
@@ -441,7 +462,7 @@ for i = 1, 5 do
 
     optionBtn.MouseButton1Click:Connect(function()
         _G.SelectedPlot = plotName
-        plotDropBtn.Text = "Arsa: " .. plotName .. " ▼"
+        plotDropBtn.Text = "Plot: " .. plotName .. " ▼"
         plotDropFrame.Visible = false
     end)
 end
@@ -518,7 +539,7 @@ labubuDropBtn.MouseButton1Click:Connect(function()
     labubuDropFrame.Visible = not labubuDropFrame.Visible
 end)
 
--- Satış Bekleme Süresi Metin Kutusu Girişi
+-- Satış Bekleme Süresi Metin Giriş Kutusu
 local cdLabel = Instance.new("TextLabel")
 cdLabel.Size = UDim2.new(0, 110, 0, 26)
 cdLabel.Position = UDim2.new(0, 10, 0, 134)
@@ -552,12 +573,46 @@ cdBox.FocusLost:Connect(function()
     end
 end)
 
--- Labubuları Tut Değiştirme (Toggle) Butonu
+-- Etkileşim Yöntemi Değiştirme Butonu
+local interactBtn = Instance.new("TextButton")
+interactBtn.Size = UDim2.new(1, -20, 0, 26)
+interactBtn.Position = UDim2.new(0, 10, 0, 168)
+interactBtn.BackgroundColor3 = Color3.fromRGB(50, 90, 140)
+interactBtn.Text = "Etkileşim: Otomatik / Tetikle"
+interactBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+interactBtn.TextSize = 12
+interactBtn.Font = Enum.Font.SourceSansBold
+interactBtn.Parent = mainFrame
+
+local interactCorner = Instance.new("UICorner")
+interactCorner.CornerRadius = UDim.new(0, 6)
+interactCorner.Parent = interactBtn
+
+local modes = {"Otomatik", "E/Q Basılı Tut", "Dokunmatik"}
+local modeIndex = 1
+
+interactBtn.MouseButton1Click:Connect(function()
+    modeIndex = (modeIndex % #modes) + 1
+    _G.InteractionMethod = modes[modeIndex]
+    
+    if _G.InteractionMethod == "Otomatik" then
+        interactBtn.Text = "Etkileşim: Otomatik / Tetikle"
+        interactBtn.BackgroundColor3 = Color3.fromRGB(50, 90, 140)
+    elseif _G.InteractionMethod == "E/Q Basılı Tut" then
+        interactBtn.Text = "Etkileşim: E / Q Basılı Tut"
+        interactBtn.BackgroundColor3 = Color3.fromRGB(140, 90, 40)
+    elseif _G.InteractionMethod == "Dokunmatik" then
+        interactBtn.Text = "Etkileşim: Dokunmatik (Mobil)"
+        interactBtn.BackgroundColor3 = Color3.fromRGB(40, 140, 120)
+    end
+end)
+
+-- Labubu'ları Tut Değiştirme Butonu
 local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(1, -20, 0, 28)
-toggleBtn.Position = UDim2.new(0, 10, 0, 168)
+toggleBtn.Size = UDim2.new(1, -20, 0, 26)
+toggleBtn.Position = UDim2.new(0, 10, 0, 200)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-toggleBtn.Text = "Labubuları Tut: KAPALI"
+toggleBtn.Text = "Labubu'ları Tut: KAPALI"
 toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleBtn.TextSize = 13
 toggleBtn.Font = Enum.Font.SourceSansBold
@@ -570,18 +625,18 @@ toggleCorner.Parent = toggleBtn
 toggleBtn.MouseButton1Click:Connect(function()
     _G.KeepLabubus = not _G.KeepLabubus
     if _G.KeepLabubus then
-        toggleBtn.Text = "Labubuları Tut: AÇIK"
+        toggleBtn.Text = "Labubu'ları Tut: AÇIK"
         toggleBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
     else
-        toggleBtn.Text = "Labubuları Tut: KAPALI"
+        toggleBtn.Text = "Labubu'ları Tut: KAPALI"
         toggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
     end
 end)
 
--- Güvenli Mod Değiştirme (Toggle) Butonu
+-- Güvenli Mod Değiştirme Butonu
 local safeBtn = Instance.new("TextButton")
 safeBtn.Size = UDim2.new(1, -20, 0, 26)
-safeBtn.Position = UDim2.new(0, 10, 0, 202)
+safeBtn.Position = UDim2.new(0, 10, 0, 232)
 safeBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
 safeBtn.Text = "Güvenli Mod: AÇIK"
 safeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -593,12 +648,12 @@ local safeCorner = Instance.new("UICorner")
 safeCorner.CornerRadius = UDim.new(0, 6)
 safeCorner.Parent = safeBtn
 
--- Güvenli Mod Alt Açıklama Metni
+-- Güvenli Mod Açıklama Metni
 local safeDesc = Instance.new("TextLabel")
 safeDesc.Size = UDim2.new(1, -20, 0, 12)
-safeDesc.Position = UDim2.new(0, 10, 0, 230)
+safeDesc.Position = UDim2.new(0, 10, 0, 260)
 safeDesc.BackgroundTransparency = 1
-safeDesc.Text = "Hızlı Tween (Açık) vs Anlık TP (Kapalı)"
+safeDesc.Text = "Hızlı Tween (Açık) vs Anında TP (Kapalı)"
 safeDesc.TextColor3 = Color3.fromRGB(160, 160, 160)
 safeDesc.TextSize = 10
 safeDesc.Font = Enum.Font.SourceSansItalic
@@ -615,12 +670,12 @@ safeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Başlat Butonu
+-- Çalıştır Butonu
 local runButton = Instance.new("TextButton")
 runButton.Size = UDim2.new(1, -20, 0, 32)
-runButton.Position = UDim2.new(0, 10, 0, 250)
+runButton.Position = UDim2.new(0, 10, 0, 280)
 runButton.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
-runButton.Text = "Oto-Alımı Başlat"
+runButton.Text = "Oto-Toplamayı Başlat"
 runButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 runButton.TextSize = 14
 runButton.Font = Enum.Font.SourceSansBold
@@ -633,7 +688,7 @@ btnCorner1.Parent = runButton
 -- Durdur Butonu
 local breakButton = Instance.new("TextButton")
 breakButton.Size = UDim2.new(1, -20, 0, 32)
-breakButton.Position = UDim2.new(0, 10, 0, 290)
+breakButton.Position = UDim2.new(0, 10, 0, 320)
 breakButton.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
 breakButton.Text = "Döngüyü Durdur"
 breakButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -645,7 +700,7 @@ local btnCorner2 = Instance.new("UICorner")
 btnCorner2.CornerRadius = UDim.new(0, 6)
 btnCorner2.Parent = breakButton
 
--- Tam Betik Sonlandırma
+-- Betiği Tamamen Sonlandırma
 local function killEverything()
     stopAutoTake()
 
@@ -655,12 +710,12 @@ local function killEverything()
     end)
 
     screenGui:Destroy()
-    print("[Otomatik Alım] Görevler sonlandırıldı ve Arayüz silindi.")
+    print("[Otomatik Toplama] Görevler durduruldu ve Arayüz kapatıldı.")
 end
 
 -- Yeniden Yükleme İşlevi
 local function reloadScript()
-    print("[Otomatik Alım] Betik güncellemesi çekiliyor...")
+    print("[Otomatik Toplama] Betik güncellemesi çekiliyor...")
     stopAutoTake()
 
     task.spawn(function()
@@ -671,7 +726,7 @@ local function reloadScript()
 
     task.wait(0.5)
     screenGui:Destroy()
-    print("[Otomatik Alım] Eski örnek başarıyla sonlandırıldı.")
+    print("[Otomatik Toplama] Eski örnek başarıyla sonlandırıldı.")
 end
 
 -- Sürüklenebilir Arayüz Kurulumu
