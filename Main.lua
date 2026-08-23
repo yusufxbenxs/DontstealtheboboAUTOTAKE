@@ -11,6 +11,7 @@ local TweenService = getService("TweenService")
 local CoreGui = getService("CoreGui")
 
 local localPlayer = Players.LocalPlayer
+local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
 -- Global States
 _G.SelectedPlayer = "Auto"
@@ -45,7 +46,7 @@ local function getTargetPlayer()
     return localPlayer
 end
 
--- Teleport / Movement Handler (Tween vs Instant)
+-- Teleport / Movement Handler
 local function safeTeleport(targetCFrame)
     local targetPlr = getTargetPlayer()
     if not targetPlr or not targetPlr.Character then return end
@@ -72,30 +73,48 @@ local function safeTeleport(targetCFrame)
     end
 end
 
--- Proximity Prompt Executor
-local function executePromptFully(prompt)
+-- Cross-Platform Proximity Prompt Executor (PC & Mobile Compatible)
+local function executePromptFully(prompt, fallbackKeyCode)
     if not prompt or not prompt:IsA("ProximityPrompt") then return end
     
     prompt.Enabled = true
     
-    local parentPart = prompt.Parent
-    if parentPart then
-        local cf = parentPart:IsA("BasePart") and parentPart.CFrame or (parentPart:IsA("Attachment") and parentPart.WorldCFrame)
-        if cf then
-            safeTeleport(cf)
+    -- Position character at the prompt target
+    local parentObj = prompt.Parent
+    if parentObj then
+        local targetCF = nil
+        if parentObj:IsA("BasePart") then
+            targetCF = parentObj.CFrame
+        elseif parentObj:IsA("Attachment") then
+            targetCF = parentObj.WorldCFrame
+        end
+
+        if targetCF then
+            safeTeleport(targetCF)
         end
     end
-    task.wait(0.1)
+    task.wait(0.15)
 
     local duration = (prompt.HoldDuration > 0 and prompt.HoldDuration) or 0.1
 
+    -- Mobile & Executor-Safe Prompt Fire Strategy
     if fireproximityprompt then
         fireproximityprompt(prompt)
         task.wait(duration + 0.1)
     else
+        -- Native engine method (Works universally on Mobile and PC)
         prompt:InputHoldBegin()
         task.wait(duration + 0.1)
         prompt:InputHoldEnd()
+    end
+
+    -- PC Backup Key Press (Only executed on Desktop)
+    if not isMobile and fallbackKeyCode then
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(true, fallbackKeyCode, false, game)
+            task.wait(0.05)
+            VirtualInputManager:SendKeyEvent(false, fallbackKeyCode, false, game)
+        end)
     end
 end
 
@@ -106,7 +125,7 @@ local function getTargetPlotFolder()
     return plotsFolder:FindFirstChild(_G.SelectedPlot) or plotsFolder:FindFirstChild("Plot1")
 end
 
--- Initialize Queue & Target Base Slots
+-- Initialize Queue & Target Base Slots (Supports 1-20 exact hierarchy)
 local function initializeQueue()
     table.clear(labubuQueue)
     table.clear(baseSlots)
@@ -126,17 +145,18 @@ local function initializeQueue()
 
         for _, slotFolder in ipairs(targetPlot.Slots:GetChildren()) do
             local slotNumber = tonumber(slotFolder.Name)
-            if slotNumber then
+            if slotNumber and slotNumber >= 1 and slotNumber <= 20 then
                 local promptAttachment = slotFolder:FindFirstChild("PromptAttachment")
+                
                 local placePrompt = promptAttachment and promptAttachment:FindFirstChild("SlotPlace")
-                local sellPrompt = promptAttachment and promptAttachment:FindFirstChild("SlotSell")
+                local sellPrompt = slotFolder:FindFirstChild("PromptSell") or (promptAttachment and promptAttachment:FindFirstChild("SlotSell"))
 
-                local targetPart = slotFolder:FindFirstChild("Pedestal") and slotFolder.Pedestal:FindFirstChild("Top") or promptAttachment
+                local targetPart = promptAttachment or slotFolder:FindFirstChild("Pedestal")
 
                 if targetPart then
                     table.insert(foundSlots, {
                         index = slotNumber,
-                        part = targetPart,
+                        targetPart = targetPart,
                         placePrompt = placePrompt,
                         sellPrompt = sellPrompt
                     })
@@ -187,16 +207,17 @@ local function startAutoTake()
                     safeTeleport(currentNpc:GetPivot())
                     if not interruptibleWait(0.1) then break end
 
-                    executePromptFully(pickupPrompt)
+                    executePromptFully(pickupPrompt, Enum.KeyCode.E)
                     if not interruptibleWait(0.2) then break end
 
                     local slotData = baseSlots[slotIndex]
-                    if slotData and slotData.part then
-                        safeTeleport(slotData.part.CFrame + Vector3.new(0, 2, 0))
+                    if slotData and slotData.targetPart then
+                        local targetCF = slotData.targetPart:IsA("Attachment") and slotData.targetPart.WorldCFrame or slotData.targetPart.CFrame
+                        safeTeleport(targetCF)
                         if not interruptibleWait(0.2) then break end
 
                         if slotData.placePrompt then
-                            executePromptFully(slotData.placePrompt)
+                            executePromptFully(slotData.placePrompt, Enum.KeyCode.E)
                         end
                     end
 
@@ -216,7 +237,7 @@ local function startAutoTake()
                         print("[Auto-Take] Firing SlotSell prompts...")
                         for _, slot in ipairs(baseSlots) do
                             if slot.sellPrompt then
-                                executePromptFully(slot.sellPrompt)
+                                executePromptFully(slot.sellPrompt, Enum.KeyCode.Q)
                             end
                         end
                         interruptibleWait(2)
@@ -649,10 +670,12 @@ btnCorner2.Parent = breakButton
 local function killEverything()
     stopAutoTake()
 
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-    end)
+    if not isMobile then
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+        end)
+    end
 
     screenGui:Destroy()
     print("[Auto-Take] Tasks killed and GUI destroyed.")
@@ -675,7 +698,7 @@ local function reloadScript()
     print("[Auto-Take] Old instance terminated successfully.")
 end
 
--- Draggable UI Setup
+-- Touch/Mouse Draggable UI Setup
 local function enableDragging(frame, clickCallback)
     local dragging, dragInput, dragStart, startPos
     local totalDragDistance = 0
