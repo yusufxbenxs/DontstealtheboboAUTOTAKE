@@ -12,7 +12,8 @@ local CoreGui = getService("CoreGui")
 local localPlayer = Players.LocalPlayer
 
 -- Global States
-_G.SelectedTarget = "Auto"
+_G.SelectedPlayer = "Auto"
+_G.SelectedPlot = "Plot1"
 _G.AutoTakeRunning = false
 _G.KeepLabubus = false
 _G.SellCooldown = 50
@@ -25,25 +26,46 @@ end
 local labubuQueue = {}
 local baseSlots = {}
 
--- Reliable Proximity Prompt Executor
+-- Resolve actual Player Instance based on selection
+local function getTargetPlayer()
+    if _G.SelectedPlayer == "Auto" then
+        return localPlayer
+    else
+        for _, plr in ipairs(Players:GetPlayers()) do
+            local fullName = plr.DisplayName .. " (@" .. plr.Name .. ")"
+            if fullName == _G.SelectedPlayer or plr.Name == _G.SelectedPlayer then
+                return plr
+            end
+        end
+    end
+    return localPlayer
+end
+
+-- Teleport Target Player safely
+local function safeTeleport(cframe)
+    local targetPlr = getTargetPlayer()
+    if targetPlr and targetPlr.Character and targetPlr.Character:FindFirstChild("HumanoidRootPart") then
+        targetPlr.Character.HumanoidRootPart.CFrame = cframe
+    end
+end
+
+-- Proximity Prompt Executor
 local function executePromptFully(prompt)
     if not prompt or not prompt:IsA("ProximityPrompt") then return end
     
     prompt.Enabled = true
     
-    -- Teleport directly inside prompt radius to bypass distance checks
     local parentPart = prompt.Parent
     if parentPart then
         local cf = parentPart:IsA("BasePart") and parentPart.CFrame or (parentPart:IsA("Attachment") and parentPart.WorldCFrame)
-        if cf and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            localPlayer.Character.HumanoidRootPart.CFrame = cf
+        if cf then
+            safeTeleport(cf)
         end
     end
     task.wait(0.15)
 
     local duration = (prompt.HoldDuration > 0 and prompt.HoldDuration) or 0.1
 
-    -- Fire prompt natively via executor bridge
     if fireproximityprompt then
         fireproximityprompt(prompt)
         task.wait(duration + 0.15)
@@ -54,30 +76,11 @@ local function executePromptFully(prompt)
     end
 end
 
--- Resolve Target Plot Folder (Auto / Player DisplayName / Plot1-5)
+-- Get Selected Target Plot Folder
 local function getTargetPlotFolder()
     local plotsFolder = Workspace:WaitForChild("Map", 5):WaitForChild("Plots", 5)
     if not plotsFolder then return nil end
-
-    if _G.SelectedTarget == "Auto" then
-        for _, plot in ipairs(plotsFolder:GetChildren()) do
-            local owner = plot:FindFirstChild("Owner") or plot:FindFirstChild("Player")
-            if owner and (owner.Value == localPlayer or owner.Value == localPlayer.Name) then
-                return plot
-            end
-        end
-        return plotsFolder:FindFirstChild("Plot1")
-    elseif _G.SelectedTarget:sub(1,4) == "Plot" then
-        return plotsFolder:FindFirstChild(_G.SelectedTarget)
-    else
-        for _, plot in ipairs(plotsFolder:GetChildren()) do
-            local owner = plot:FindFirstChild("Owner") or plot:FindFirstChild("Player")
-            if owner and tostring(owner.Value) == _G.SelectedTarget then
-                return plot
-            end
-        end
-    end
-    return nil
+    return plotsFolder:FindFirstChild(_G.SelectedPlot) or plotsFolder:FindFirstChild("Plot1")
 end
 
 -- Initialize Queue & Target Base Slots
@@ -124,7 +127,7 @@ local function initializeQueue()
     end
 end
 
--- Interruptible Wait
+-- Interruptible Wait Helper
 local function interruptibleWait(seconds)
     local elapsed = 0
     while elapsed < seconds and _G.AutoTakeRunning do
@@ -134,15 +137,7 @@ local function interruptibleWait(seconds)
     return _G.AutoTakeRunning
 end
 
--- Teleport Helper
-local function safeTeleport(cframe)
-    local char = localPlayer.Character
-    if char and char:FindFirstChild("HumanoidRootPart") then
-        char.HumanoidRootPart.CFrame = cframe
-    end
-end
-
--- Auto-Take Engine Task
+-- Auto-Take Core Engine Loop
 local function startAutoTake()
     if _G.AutoTakeRunning then return end
     _G.AutoTakeRunning = true
@@ -187,7 +182,7 @@ local function startAutoTake()
 
             if _G.AutoTakeRunning then
                 if _G.KeepLabubus then
-                    print("[Auto-Take] Base full! 'Keep Labubus' enabled. Stopping auto-sell...")
+                    print("[Auto-Take] Base full! 'Keep Labubus' enabled. Stopping loop.")
                     _G.AutoTakeRunning = false
                     break
                 else
@@ -212,7 +207,7 @@ local function stopAutoTake()
     if _G.AutoTakeThread then
         task.cancel(_G.AutoTakeThread)
         _G.AutoTakeThread = nil
-        print("[Auto-Take] Loop terminated.")
+        print("[Auto-Take] Loop stopped.")
     end
 end
 
@@ -246,7 +241,7 @@ miniCorner.Parent = miniBtn
 
 -- Main Draggable Window Frame
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 230, 0, 260)
+mainFrame.Size = UDim2.new(0, 230, 0, 295)
 mainFrame.Position = UDim2.new(0.02, 0, 0.1, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 mainFrame.BackgroundTransparency = 0.2
@@ -258,9 +253,9 @@ local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 8)
 mainCorner.Parent = mainFrame
 
--- Title
+-- Header Title
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, -60, 0, 30)
+titleLabel.Size = UDim2.new(1, -86, 0, 30)
 titleLabel.Position = UDim2.new(0, 10, 0, 5)
 titleLabel.BackgroundTransparency = 1
 titleLabel.Text = "Labubu Auto-Take"
@@ -268,6 +263,21 @@ titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextScaled = true
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.Parent = mainFrame
+
+-- Reload Button (↻)
+local reloadButton = Instance.new("TextButton")
+reloadButton.Size = UDim2.new(0, 22, 0, 22)
+reloadButton.Position = UDim2.new(1, -78, 0, 5)
+reloadButton.BackgroundColor3 = Color3.fromRGB(46, 139, 192)
+reloadButton.Text = "↻"
+reloadButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+reloadButton.TextSize = 16
+reloadButton.Font = Enum.Font.SourceSansBold
+reloadButton.Parent = mainFrame
+
+local reloadCorner = Instance.new("UICorner")
+reloadCorner.CornerRadius = UDim.new(0, 4)
+reloadCorner.Parent = reloadButton
 
 -- Minimize Button (-)
 local minimizeButton = Instance.new("TextButton")
@@ -299,76 +309,126 @@ local closeCorner = Instance.new("UICorner")
 closeCorner.CornerRadius = UDim.new(0, 4)
 closeCorner.Parent = closeButton
 
--- Target Dropdown
-local dropdownBtn = Instance.new("TextButton")
-dropdownBtn.Size = UDim2.new(1, -20, 0, 26)
-dropdownBtn.Position = UDim2.new(0, 10, 0, 38)
-dropdownBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-dropdownBtn.Text = "Target: Auto ▼"
-dropdownBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-dropdownBtn.TextSize = 13
-dropdownBtn.Font = Enum.Font.SourceSans
-dropdownBtn.Parent = mainFrame
+-- 1. Target Player Dropdown
+local plrDropBtn = Instance.new("TextButton")
+plrDropBtn.Size = UDim2.new(1, -20, 0, 26)
+plrDropBtn.Position = UDim2.new(0, 10, 0, 36)
+plrDropBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+plrDropBtn.Text = "Player: Auto ▼"
+plrDropBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+plrDropBtn.TextSize = 13
+plrDropBtn.Font = Enum.Font.SourceSans
+plrDropBtn.Parent = mainFrame
 
-local dropCorner = Instance.new("UICorner")
-dropCorner.CornerRadius = UDim.new(0, 6)
-dropCorner.Parent = dropdownBtn
+local plrDropCorner = Instance.new("UICorner")
+plrDropCorner.CornerRadius = UDim.new(0, 6)
+plrDropCorner.Parent = plrDropBtn
 
-local dropdownFrame = Instance.new("ScrollingFrame")
-dropdownFrame.Size = UDim2.new(1, -20, 0, 130)
-dropdownFrame.Position = UDim2.new(0, 10, 0, 66)
-dropdownFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-dropdownFrame.Visible = false
-dropdownFrame.ZIndex = 10
-dropdownFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-dropdownFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-dropdownFrame.Parent = mainFrame
+local plrDropFrame = Instance.new("ScrollingFrame")
+plrDropFrame.Size = UDim2.new(1, -20, 0, 120)
+plrDropFrame.Position = UDim2.new(0, 10, 0, 64)
+plrDropFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+plrDropFrame.Visible = false
+plrDropFrame.ZIndex = 15
+plrDropFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+plrDropFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+plrDropFrame.Parent = mainFrame
 
-local listLayout = Instance.new("UIListLayout")
-listLayout.Parent = dropdownFrame
+local plrListLayout = Instance.new("UIListLayout")
+plrListLayout.Parent = plrDropFrame
 
-local function populateDropdown()
-    for _, child in ipairs(dropdownFrame:GetChildren()) do
+local function populatePlayerDropdown()
+    for _, child in ipairs(plrDropFrame:GetChildren()) do
         if child:IsA("TextButton") then child:Destroy() end
     end
 
-    local targets = {"Auto", "Plot1", "Plot2", "Plot3", "Plot4", "Plot5"}
-    local playerList = {}
+    local playerList = {"Auto"}
+    local activePlayers = {}
     for _, plr in ipairs(Players:GetPlayers()) do
-        table.insert(playerList, plr.DisplayName .. " (@" .. plr.Name .. ")")
+        table.insert(activePlayers, plr.DisplayName .. " (@" .. plr.Name .. ")")
     end
-    table.sort(playerList)
+    table.sort(activePlayers)
+    for _, name in ipairs(activePlayers) do table.insert(playerList, name) end
 
-    for _, target in ipairs(targets) do table.insert(playerList, 1, target) end
-
-    for _, targetName in ipairs(playerList) do
+    for _, plrName in ipairs(playerList) do
         local optionBtn = Instance.new("TextButton")
         optionBtn.Size = UDim2.new(1, 0, 0, 24)
         optionBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-        optionBtn.Text = targetName
+        optionBtn.Text = plrName
         optionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         optionBtn.TextSize = 12
         optionBtn.Font = Enum.Font.SourceSans
-        optionBtn.ZIndex = 11
-        optionBtn.Parent = dropdownFrame
+        optionBtn.ZIndex = 16
+        optionBtn.Parent = plrDropFrame
 
         optionBtn.MouseButton1Click:Connect(function()
-            _G.SelectedTarget = targetName
-            dropdownBtn.Text = "Target: " .. targetName .. " ▼"
-            dropdownFrame.Visible = false
+            _G.SelectedPlayer = plrName
+            plrDropBtn.Text = "Player: " .. plrName .. " ▼"
+            plrDropFrame.Visible = false
         end)
     end
 end
 
-dropdownBtn.MouseButton1Click:Connect(function()
-    if not dropdownFrame.Visible then populateDropdown() end
-    dropdownFrame.Visible = not dropdownFrame.Visible
+plrDropBtn.MouseButton1Click:Connect(function()
+    if not plrDropFrame.Visible then populatePlayerDropdown() end
+    plrDropFrame.Visible = not plrDropFrame.Visible
+end)
+
+-- 2. Target Plot Dropdown
+local plotDropBtn = Instance.new("TextButton")
+plotDropBtn.Size = UDim2.new(1, -20, 0, 26)
+plotDropBtn.Position = UDim2.new(0, 10, 0, 68)
+plotDropBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+plotDropBtn.Text = "Plot: Plot1 ▼"
+plotDropBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+plotDropBtn.TextSize = 13
+plotDropBtn.Font = Enum.Font.SourceSans
+plotDropBtn.Parent = mainFrame
+
+local plotDropCorner = Instance.new("UICorner")
+plotDropCorner.CornerRadius = UDim.new(0, 6)
+plotDropCorner.Parent = plotDropBtn
+
+local plotDropFrame = Instance.new("ScrollingFrame")
+plotDropFrame.Size = UDim2.new(1, -20, 0, 120)
+plotDropFrame.Position = UDim2.new(0, 10, 0, 96)
+plotDropFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+plotDropFrame.Visible = false
+plotDropFrame.ZIndex = 10
+plotDropFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+plotDropFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+plotDropFrame.Parent = mainFrame
+
+local plotListLayout = Instance.new("UIListLayout")
+plotListLayout.Parent = plotDropFrame
+
+for i = 1, 5 do
+    local plotName = "Plot" .. i
+    local optionBtn = Instance.new("TextButton")
+    optionBtn.Size = UDim2.new(1, 0, 0, 24)
+    optionBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    optionBtn.Text = plotName
+    optionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    optionBtn.TextSize = 12
+    optionBtn.Font = Enum.Font.SourceSans
+    optionBtn.ZIndex = 11
+    optionBtn.Parent = plotDropFrame
+
+    optionBtn.MouseButton1Click:Connect(function()
+        _G.SelectedPlot = plotName
+        plotDropBtn.Text = "Plot: " .. plotName .. " ▼"
+        plotDropFrame.Visible = false
+    end)
+end
+
+plotDropBtn.MouseButton1Click:Connect(function()
+    plotDropFrame.Visible = not plotDropFrame.Visible
 end)
 
 -- Sell Cooldown Textbox Input
 local cdLabel = Instance.new("TextLabel")
 cdLabel.Size = UDim2.new(0, 110, 0, 26)
-cdLabel.Position = UDim2.new(0, 10, 0, 72)
+cdLabel.Position = UDim2.new(0, 10, 0, 102)
 cdLabel.BackgroundTransparency = 1
 cdLabel.Text = "Sell Wait (Sec):"
 cdLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -378,7 +438,7 @@ cdLabel.Parent = mainFrame
 
 local cdBox = Instance.new("TextBox")
 cdBox.Size = UDim2.new(0, 85, 0, 26)
-cdBox.Position = UDim2.new(1, -95, 0, 72)
+cdBox.Position = UDim2.new(1, -95, 0, 102)
 cdBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 cdBox.Text = tostring(_G.SellCooldown)
 cdBox.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -402,7 +462,7 @@ end)
 -- Keep Labubus Toggle Button
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(1, -20, 0, 28)
-toggleBtn.Position = UDim2.new(0, 10, 0, 106)
+toggleBtn.Position = UDim2.new(0, 10, 0, 136)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 toggleBtn.Text = "Keep Labubus: OFF"
 toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -428,7 +488,7 @@ end)
 -- Run Button
 local runButton = Instance.new("TextButton")
 runButton.Size = UDim2.new(1, -20, 0, 32)
-runButton.Position = UDim2.new(0, 10, 0, 142)
+runButton.Position = UDim2.new(0, 10, 0, 172)
 runButton.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
 runButton.Text = "Run Auto-Take"
 runButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -443,7 +503,7 @@ btnCorner1.Parent = runButton
 -- Break Button
 local breakButton = Instance.new("TextButton")
 breakButton.Size = UDim2.new(1, -20, 0, 32)
-breakButton.Position = UDim2.new(0, 10, 0, 182)
+breakButton.Position = UDim2.new(0, 10, 0, 212)
 breakButton.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
 breakButton.Text = "Break Loop"
 breakButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -455,7 +515,7 @@ local btnCorner2 = Instance.new("UICorner")
 btnCorner2.CornerRadius = UDim.new(0, 6)
 btnCorner2.Parent = breakButton
 
--- Full Killer Functionality
+-- Full Script Termination (Killer Function)
 local function killEverything()
     stopAutoTake()
 
@@ -466,6 +526,22 @@ local function killEverything()
 
     screenGui:Destroy()
     print("[Auto-Take] Tasks killed and GUI destroyed.")
+end
+
+-- Reload Functionality
+local function reloadScript()
+    print("[Auto-Take] Fetching script update...")
+    stopAutoTake()
+
+    task.spawn(function()
+        pcall(function()
+            loadstring(game:HttpGet('https://raw.githubusercontent.com/yusufxbenxs/DontstealtheboboAUTOTAKE/refs/heads/main/Main.lua'))()
+        end)
+    end)
+
+    task.wait(0.5)
+    screenGui:Destroy()
+    print("[Auto-Take] Old instance terminated successfully.")
 end
 
 -- Draggable UI Setup (Prevents opening while dragging on Mobile)
@@ -512,6 +588,7 @@ enableDragging(miniBtn, function()
     miniBtn.Visible = false
 end)
 
+reloadButton.MouseButton1Click:Connect(reloadScript)
 minimizeButton.MouseButton1Click:Connect(function()
     mainFrame.Visible = false
     miniBtn.Visible = true
