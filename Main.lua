@@ -289,14 +289,14 @@ titleLabel.TextScaled = true
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.Parent = mainFrame
 
--- Reload Button (↻)
+-- Reload Button ("R")
 local reloadButton = Instance.new("TextButton")
 reloadButton.Size = UDim2.new(0, 22, 0, 22)
 reloadButton.Position = UDim2.new(1, -78, 0, 5)
 reloadButton.BackgroundColor3 = Color3.fromRGB(46, 139, 192)
-reloadButton.Text = "↻"
+reloadButton.Text = "R"
 reloadButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-reloadButton.TextSize = 16
+reloadButton.TextSize = 14
 reloadButton.Font = Enum.Font.SourceSansBold
 reloadButton.Parent = mainFrame
 
@@ -658,14 +658,15 @@ local function killEverything()
     print("[Auto-Take] Tasks killed and GUI destroyed.")
 end
 
--- Reload Functionality
+-- Cache-Bypassing Reload Functionality
 local function reloadScript()
     print("[Auto-Take] Fetching script update...")
     stopAutoTake()
 
     task.spawn(function()
         pcall(function()
-            loadstring(game:HttpGet('https://raw.githubusercontent.com/yusufxbenxs/DontstealtheboboAUTOTAKE/refs/heads/main/Main.lua'))()
+            local uncachedUrl = 'https://raw.githubusercontent.com/yusufxbenxs/DontstealtheboboAUTOTAKE/refs/heads/main/Main.lua?v=' .. tick()
+            loadstring(game:HttpGet(uncachedUrl))()
         end)
     end)
 
