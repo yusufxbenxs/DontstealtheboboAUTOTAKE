@@ -15,6 +15,7 @@ local localPlayer = Players.LocalPlayer
 -- Global States
 _G.SelectedPlayer = "Auto"
 _G.SelectedPlot = "Plot1"
+_G.SelectedLabubu = "Any (Random)"
 _G.AutoTakeRunning = false
 _G.KeepLabubus = false
 _G.SafeMode = true
@@ -113,7 +114,9 @@ local function initializeQueue()
     local npcFolder = Workspace:WaitForChild("Map", 5):WaitForChild("Zones", 5):WaitForChild("Field", 5):WaitForChild("NPC", 5)
     if npcFolder then
         for _, npc in ipairs(npcFolder:GetChildren()) do
-            table.insert(labubuQueue, npc)
+            if _G.SelectedLabubu == "Any (Random)" or npc.Name == _G.SelectedLabubu then
+                table.insert(labubuQueue, npc)
+            end
         end
     end
 
@@ -169,8 +172,8 @@ local function startAutoTake()
             initializeQueue()
 
             if #labubuQueue == 0 or #baseSlots == 0 then
-                warn("[Auto-Take] Waiting for NPCs or slots...")
-                if not interruptibleWait(3) then break end
+                warn("[Auto-Take] Waiting for NPCs or slots matching target...")
+                if not interruptibleWait(2) then break end
                 continue
             end
 
@@ -263,7 +266,7 @@ miniCorner.Parent = miniBtn
 
 -- Main Window Frame
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 230, 0, 335)
+mainFrame.Size = UDim2.new(0, 230, 0, 365)
 mainFrame.Position = UDim2.new(0.02, 0, 0.1, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 mainFrame.BackgroundTransparency = 0.2
@@ -351,7 +354,7 @@ plrDropFrame.Size = UDim2.new(1, -20, 0, 120)
 plrDropFrame.Position = UDim2.new(0, 10, 0, 64)
 plrDropFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 plrDropFrame.Visible = false
-plrDropFrame.ZIndex = 15
+plrDropFrame.ZIndex = 25
 plrDropFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 plrDropFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 plrDropFrame.Parent = mainFrame
@@ -380,7 +383,7 @@ local function populatePlayerDropdown()
         optionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         optionBtn.TextSize = 12
         optionBtn.Font = Enum.Font.SourceSans
-        optionBtn.ZIndex = 16
+        optionBtn.ZIndex = 26
         optionBtn.Parent = plrDropFrame
 
         optionBtn.MouseButton1Click:Connect(function()
@@ -416,7 +419,7 @@ plotDropFrame.Size = UDim2.new(1, -20, 0, 120)
 plotDropFrame.Position = UDim2.new(0, 10, 0, 96)
 plotDropFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 plotDropFrame.Visible = false
-plotDropFrame.ZIndex = 10
+plotDropFrame.ZIndex = 20
 plotDropFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 plotDropFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 plotDropFrame.Parent = mainFrame
@@ -433,7 +436,7 @@ for i = 1, 5 do
     optionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     optionBtn.TextSize = 12
     optionBtn.Font = Enum.Font.SourceSans
-    optionBtn.ZIndex = 11
+    optionBtn.ZIndex = 21
     optionBtn.Parent = plotDropFrame
 
     optionBtn.MouseButton1Click:Connect(function()
@@ -447,10 +450,78 @@ plotDropBtn.MouseButton1Click:Connect(function()
     plotDropFrame.Visible = not plotDropFrame.Visible
 end)
 
+-- Target Labubu Dropdown
+local labubuDropBtn = Instance.new("TextButton")
+labubuDropBtn.Size = UDim2.new(1, -20, 0, 26)
+labubuDropBtn.Position = UDim2.new(0, 10, 0, 100)
+labubuDropBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+labubuDropBtn.Text = "Target: Any (Random) ▼"
+labubuDropBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+labubuDropBtn.TextSize = 13
+labubuDropBtn.Font = Enum.Font.SourceSans
+labubuDropBtn.Parent = mainFrame
+
+local labubuDropCorner = Instance.new("UICorner")
+labubuDropCorner.CornerRadius = UDim.new(0, 6)
+labubuDropCorner.Parent = labubuDropBtn
+
+local labubuDropFrame = Instance.new("ScrollingFrame")
+labubuDropFrame.Size = UDim2.new(1, -20, 0, 120)
+labubuDropFrame.Position = UDim2.new(0, 10, 0, 128)
+labubuDropFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+labubuDropFrame.Visible = false
+labubuDropFrame.ZIndex = 15
+labubuDropFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+labubuDropFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+labubuDropFrame.Parent = mainFrame
+
+local labubuListLayout = Instance.new("UIListLayout")
+labubuListLayout.Parent = labubuDropFrame
+
+local function populateLabubuDropdown()
+    for _, child in ipairs(labubuDropFrame:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+
+    local items = {"Any (Random)"}
+    local npcFolder = Workspace:FindFirstChild("Map") and Workspace.Map:FindFirstChild("Zones") and Workspace.Map.Zones:FindFirstChild("Field") and Workspace.Map.Zones.Field:FindFirstChild("NPC")
+    
+    if npcFolder then
+        for _, npc in ipairs(npcFolder:GetChildren()) do
+            if not table.find(items, npc.Name) then
+                table.insert(items, npc.Name)
+            end
+        end
+    end
+
+    for _, labName in ipairs(items) do
+        local optionBtn = Instance.new("TextButton")
+        optionBtn.Size = UDim2.new(1, 0, 0, 24)
+        optionBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        optionBtn.Text = labName
+        optionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        optionBtn.TextSize = 11
+        optionBtn.Font = Enum.Font.SourceSans
+        optionBtn.ZIndex = 16
+        optionBtn.Parent = labubuDropFrame
+
+        optionBtn.MouseButton1Click:Connect(function()
+            _G.SelectedLabubu = labName
+            labubuDropBtn.Text = "Target: " .. string.sub(labName, 1, 12) .. " ▼"
+            labubuDropFrame.Visible = false
+        end)
+    end
+end
+
+labubuDropBtn.MouseButton1Click:Connect(function()
+    if not labubuDropFrame.Visible then populateLabubuDropdown() end
+    labubuDropFrame.Visible = not labubuDropFrame.Visible
+end)
+
 -- Sell Cooldown Textbox Input
 local cdLabel = Instance.new("TextLabel")
 cdLabel.Size = UDim2.new(0, 110, 0, 26)
-cdLabel.Position = UDim2.new(0, 10, 0, 102)
+cdLabel.Position = UDim2.new(0, 10, 0, 134)
 cdLabel.BackgroundTransparency = 1
 cdLabel.Text = "Sell Wait (Sec):"
 cdLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -460,7 +531,7 @@ cdLabel.Parent = mainFrame
 
 local cdBox = Instance.new("TextBox")
 cdBox.Size = UDim2.new(0, 85, 0, 26)
-cdBox.Position = UDim2.new(1, -95, 0, 102)
+cdBox.Position = UDim2.new(1, -95, 0, 134)
 cdBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 cdBox.Text = tostring(_G.SellCooldown)
 cdBox.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -484,7 +555,7 @@ end)
 -- Keep Labubus Toggle Button
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(1, -20, 0, 28)
-toggleBtn.Position = UDim2.new(0, 10, 0, 136)
+toggleBtn.Position = UDim2.new(0, 10, 0, 168)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 toggleBtn.Text = "Keep Labubus: OFF"
 toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -510,7 +581,7 @@ end)
 -- Safe Mode Toggle Button
 local safeBtn = Instance.new("TextButton")
 safeBtn.Size = UDim2.new(1, -20, 0, 26)
-safeBtn.Position = UDim2.new(0, 10, 0, 170)
+safeBtn.Position = UDim2.new(0, 10, 0, 202)
 safeBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
 safeBtn.Text = "Safe Mode: ON"
 safeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -525,7 +596,7 @@ safeCorner.Parent = safeBtn
 -- Safe Mode Sub-text Description
 local safeDesc = Instance.new("TextLabel")
 safeDesc.Size = UDim2.new(1, -20, 0, 12)
-safeDesc.Position = UDim2.new(0, 10, 0, 198)
+safeDesc.Position = UDim2.new(0, 10, 0, 230)
 safeDesc.BackgroundTransparency = 1
 safeDesc.Text = "Fast Tweening (On) vs Instant TP (Off)"
 safeDesc.TextColor3 = Color3.fromRGB(160, 160, 160)
@@ -547,7 +618,7 @@ end)
 -- Run Button
 local runButton = Instance.new("TextButton")
 runButton.Size = UDim2.new(1, -20, 0, 32)
-runButton.Position = UDim2.new(0, 10, 0, 218)
+runButton.Position = UDim2.new(0, 10, 0, 250)
 runButton.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
 runButton.Text = "Run Auto-Take"
 runButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -562,7 +633,7 @@ btnCorner1.Parent = runButton
 -- Break Button
 local breakButton = Instance.new("TextButton")
 breakButton.Size = UDim2.new(1, -20, 0, 32)
-breakButton.Position = UDim2.new(0, 10, 0, 258)
+breakButton.Position = UDim2.new(0, 10, 0, 290)
 breakButton.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
 breakButton.Text = "Break Loop"
 breakButton.TextColor3 = Color3.fromRGB(255, 255, 255)
