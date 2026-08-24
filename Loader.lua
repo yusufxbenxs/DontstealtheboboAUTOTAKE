@@ -1,159 +1,115 @@
--- Service Initialization
-local getService = function(service)
-    return (cloneref and cloneref(game:GetService(service))) or game:GetService(service)
-end
-
-local Players = getService("Players")
-local UserInputService = getService("UserInputService")
-local CoreGui = getService("CoreGui")
+-- GameBuddy Cross-Platform Loader (PC & Mobile Safe)
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
 
 local localPlayer = Players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui", 5) or localPlayer:FindFirstChildOfClass("PlayerGui")
 
--- GUI Parent Setup
-local guiParent = (gethui and gethui()) or CoreGui or localPlayer:WaitForChild("PlayerGui")
-if guiParent:FindFirstChild("AutoTakeLoaderGUI") then
-    guiParent.AutoTakeLoaderGUI:Destroy()
+-- Safe UI Parent Strategy
+local targetParent = CoreGui
+local successCore = pcall(function()
+    local test = Instance.new("Folder")
+    test.Parent = CoreGui
+    test:Destroy()
+end)
+if not successCore and playerGui then
+    targetParent = playerGui
 end
 
-local loaderGui = Instance.new("ScreenGui")
-loaderGui.Name = "AutoTakeLoaderGUI"
-loaderGui.ResetOnSpawn = false
-loaderGui.Parent = guiParent
+if targetParent:FindFirstChild("GameBuddyLoader") then 
+    targetParent.GameBuddyLoader:Destroy() 
+end
 
--- Loader Main Frame
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 250, 0, 180)
-frame.Position = UDim2.new(0.5, -125, 0.4, -90)
-frame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-frame.BackgroundTransparency = 0.15
-frame.BorderSizePixel = 0
-frame.Active = true
-frame.Parent = loaderGui
+local sg = Instance.new("ScreenGui")
+sg.Name = "GameBuddyLoader"
+sg.ResetOnSpawn = false
+sg.DisplayOrder = 999999
+sg.Parent = targetParent
 
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
+local window = Instance.new("Frame")
+window.Size = UDim2.new(0, 340, 0, 200)
+window.Position = UDim2.new(0.5, -170, 0.5, -100)
+window.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
+window.BorderSizePixel = 0
+window.Active = true
+window.Draggable = true
+window.Parent = sg
 
-local stroke = Instance.new("UIStroke")
-stroke.Color = Color3.fromRGB(60, 60, 75)
-stroke.Thickness = 1
-stroke.Parent = frame
+local winCorner = Instance.new("UICorner")
+winCorner.CornerRadius = UDim.new(0, 10)
+winCorner.Parent = window
 
--- Title Label
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 38)
+header.BackgroundColor3 = Color3.fromRGB(28, 31, 40)
+header.BorderSizePixel = 0
+header.Parent = window
+
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -20, 0, 30)
-title.Position = UDim2.new(0, 10, 0, 5)
+title.Size = UDim2.new(1, -20, 1, 0)
+title.Position = UDim2.new(0, 12, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "Auto-Take Loader"
+title.Text = "GameBuddy - Select Platform"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
 title.TextSize = 13
-title.Font = Enum.Font.SourceSansBold
-title.Parent = frame
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = header
 
--- Script URLs Mapping
-local scriptUrls = {
-    ["English"] = "https://raw.githubusercontent.com/yusufxbenxs/DontstealtheboboAUTOTAKE/refs/heads/main/Main.lua",
-    ["Türkçe (Turkish)"] = "https://raw.githubusercontent.com/yusufxbenxs/DontstealtheboboAUTOTAKE/refs/heads/main/MainTR.lua"
-}
+-- PC Button
+local pcBtn = Instance.new("TextButton")
+pcBtn.Size = UDim2.new(1, -30, 0, 45)
+pcBtn.Position = UDim2.new(0, 15, 0, 55)
+pcBtn.BackgroundColor3 = Color3.fromRGB(41, 128, 185)
+pcBtn.Text = "Load PC Version"
+pcBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+pcBtn.Font = Enum.Font.GothamBold
+pcBtn.TextSize = 13
+pcBtn.Parent = window
 
-local selectedLanguage = "English"
-local langList = {"English", "Türkçe (Turkish)"}
-local currentLangIndex = 1
+local pcCorner = Instance.new("UICorner")
+pcCorner.CornerRadius = UDim.new(0, 6)
+pcCorner.Parent = pcBtn
 
--- Language Dropdown Button
-local dropdownBtn = Instance.new("TextButton")
-dropdownBtn.Size = UDim2.new(1, -20, 0, 30)
-dropdownBtn.Position = UDim2.new(0, 10, 0, 40)
-dropdownBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-dropdownBtn.BackgroundTransparency = 0.2
-dropdownBtn.Text = "Language: " .. selectedLanguage .. " ▼"
-dropdownBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-dropdownBtn.TextSize = 12
-dropdownBtn.Font = Enum.Font.SourceSans
-dropdownBtn.Parent = frame
-Instance.new("UICorner", dropdownBtn).CornerRadius = UDim.new(0, 5)
+-- Mobile Button
+local mobileBtn = Instance.new("TextButton")
+mobileBtn.Size = UDim2.new(1, -30, 0, 45)
+mobileBtn.Position = UDim2.new(0, 15, 0, 115)
+mobileBtn.BackgroundColor3 = Color3.fromRGB(39, 174, 96)
+mobileBtn.Text = "Load Mobile Version"
+mobileBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+mobileBtn.Font = Enum.Font.GothamBold
+mobileBtn.TextSize = 13
+mobileBtn.Parent = window
 
-dropdownBtn.MouseButton1Click:Connect(function()
-    currentLangIndex = (currentLangIndex % #langList) + 1
-    selectedLanguage = langList[currentLangIndex]
-    dropdownBtn.Text = "Language: " .. selectedLanguage .. " ▼"
-end)
+local mobileCorner = Instance.new("UICorner")
+mobileCorner.CornerRadius = UDim.new(0, 6)
+mobileCorner.Parent = mobileBtn
 
--- Execution Handler Function
-local function runScript(useCache)
-    local baseUrl = scriptUrls[selectedLanguage]
-    if not baseUrl then return end
-
-    -- Append timestamp parameter to bypass Roblox HttpGet caching for "Updated"
-    local targetUrl = useCache and baseUrl or (baseUrl .. "?t=" .. tostring(tick()))
-
+-- Robust execution wrapper function
+local function safeExecute(url)
+    sg:Destroy()
     task.spawn(function()
-        local success, err = pcall(function()
-            loadstring(game:HttpGet(targetUrl))()
+        local success, result = pcall(function()
+            local source = game:HttpGet(url)
+            local fn, err = loadstring(source)
+            if fn then
+                fn()
+            else
+                warn("GameBuddy Loadstring Compile Error: ", err)
+            end
         end)
-
         if not success then
-            warn("Failed to load script: " .. tostring(err))
-        else
-            loaderGui:Destroy()
+            warn("GameBuddy HTTP/Execution Error: ", result)
         end
     end)
 end
 
--- Load (Cache) Button
-local loadCacheBtn = Instance.new("TextButton")
-loadCacheBtn.Size = UDim2.new(1, -20, 0, 32)
-loadCacheBtn.Position = UDim2.new(0, 10, 0, 85)
-loadCacheBtn.BackgroundColor3 = Color3.fromRGB(45, 85, 125)
-loadCacheBtn.BackgroundTransparency = 0.2
-loadCacheBtn.Text = "⚡ Load (Cache)"
-loadCacheBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-loadCacheBtn.TextSize = 12
-loadCacheBtn.Font = Enum.Font.SourceSansBold
-loadCacheBtn.Parent = frame
-Instance.new("UICorner", loadCacheBtn).CornerRadius = UDim.new(0, 5)
-
-loadCacheBtn.MouseButton1Click:Connect(function()
-    loadCacheBtn.Text = "Loading..."
-    runScript(true)
+-- Button Connections
+pcBtn.MouseButton1Click:Connect(function()
+    safeExecute('https://raw.githubusercontent.com/yusufxbenxs/Gamebuddy/refs/heads/main/mainPC.lua')
 end)
 
--- Load (Updated) Button
-local loadUpdatedBtn = Instance.new("TextButton")
-loadUpdatedBtn.Size = UDim2.new(1, -20, 0, 32)
-loadUpdatedBtn.Position = UDim2.new(0, 10, 0, 128)
-loadUpdatedBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
-loadUpdatedBtn.BackgroundTransparency = 0.2
-loadUpdatedBtn.Text = "🔄 Load (Updated)"
-loadUpdatedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-loadUpdatedBtn.TextSize = 12
-loadUpdatedBtn.Font = Enum.Font.SourceSansBold
-loadUpdatedBtn.Parent = frame
-Instance.new("UICorner", loadUpdatedBtn).CornerRadius = UDim.new(0, 5)
-
-loadUpdatedBtn.MouseButton1Click:Connect(function()
-    loadUpdatedBtn.Text = "Fetching Latest..."
-    runScript(false)
-end)
-
--- Draggable Logic
-local dragging, dragInput, dragStart, startPos
-frame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = frame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end)
-    end
-end)
-frame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
+mobileBtn.MouseButton1Click:Connect(function()
+    safeExecute('https://raw.githubusercontent.com/yusufxbenxs/Gamebuddy/refs/heads/main/mainMobile.lua')
 end)
