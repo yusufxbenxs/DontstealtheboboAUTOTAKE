@@ -1,21 +1,36 @@
--- GameBuddy Cross-Platform Loader (PC & Mobile Safe)
+-- GameBuddy Universal Loader (Guaranteed UI Appearance)
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 
 local localPlayer = Players.LocalPlayer
-local playerGui = localPlayer:WaitForChild("PlayerGui", 5) or localPlayer:FindFirstChildOfClass("PlayerGui")
 
--- Safe UI Parent Strategy
-local targetParent = CoreGui
-local successCore = pcall(function()
-    local test = Instance.new("Folder")
-    test.Parent = CoreGui
-    test:Destroy()
-end)
-if not successCore and playerGui then
-    targetParent = playerGui
+-- Debug log to confirm execution started
+print("[GameBuddy Loader]: Script initialized successfully.")
+
+-- Safe UI Parent Strategy with fallback
+local function getTargetContainer()
+    local success, err = pcall(function()
+        return CoreGui
+    end)
+    if success and CoreGui then
+        return CoreGui
+    end
+    
+    local playerGui = localPlayer:WaitForChild("PlayerGui", 3)
+    if playerGui then
+        return playerGui
+    end
+    
+    return localPlayer:FindFirstChildOfClass("PlayerGui") or localPlayer
 end
 
+local targetParent = getTargetContainer()
+if not targetParent then
+    warn("[GameBuddy Loader]: Critical error - No valid UI parent container found.")
+    return
+end
+
+-- Clear old loader if it exists
 if targetParent:FindFirstChild("GameBuddyLoader") then 
     targetParent.GameBuddyLoader:Destroy() 
 end
@@ -24,6 +39,7 @@ local sg = Instance.new("ScreenGui")
 sg.Name = "GameBuddyLoader"
 sg.ResetOnSpawn = false
 sg.DisplayOrder = 999999
+sg.IgnoreGuiInset = true
 sg.Parent = targetParent
 
 local window = Instance.new("Frame")
@@ -96,11 +112,11 @@ local function safeExecute(url)
             if fn then
                 fn()
             else
-                warn("GameBuddy Loadstring Compile Error: ", err)
+                warn("GameBuddy Compile Error: ", err)
             end
         end)
         if not success then
-            warn("GameBuddy HTTP/Execution Error: ", result)
+            warn("GameBuddy Execution Error: ", result)
         end
     end)
 end
@@ -113,3 +129,5 @@ end)
 mobileBtn.MouseButton1Click:Connect(function()
     safeExecute('https://raw.githubusercontent.com/yusufxbenxs/Gamebuddy/refs/heads/main/mainMobile.lua')
 end)
+
+print("[GameBuddy Loader]: UI rendered successfully.")
